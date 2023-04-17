@@ -20,12 +20,22 @@ public class PlayerController : MonoBehaviour
     public float checkRadius;
     public LayerMask whatIsGround; // determines what layer the player interacts with
 
+    [Header("Wall Jump System")]
+    public Transform wallCheck;
+    private bool _isWallTouch;
+    private bool _wallSliding;
+    public float wallSlideSpeed;
+    
+    public float wallJumpDuration;
+    public Vector2 wallJumpForce;
+    private bool _wallJumping;
+
     private int _extraJumps;
     public int extraJumpsValue;
 
     private Animator _anim;
-
-    // Start is called before the first frame update
+    
+    // set rigidbody and animator in very first frame of program
     void Start()
     {
         _extraJumps = extraJumpsValue;
@@ -38,20 +48,40 @@ public class PlayerController : MonoBehaviour
     private void FixedUpdate()
     {
         _isGrounded = Physics2D.OverlapCircle(groundCheck.position, checkRadius, whatIsGround);
+        _isWallTouch = Physics2D.OverlapCircle(wallCheck.position, checkRadius, whatIsGround);
         _moveInputX = Input.GetAxisRaw("Horizontal"); // built-in Unity input field (e.g. holding right arrow key -> moveInput = 1)
-
-        Run();
-        UpdateAnimations();
         
+        Run();
+        //WallSlide();
+    }
+    void Update() // Update is called once per frame
+    {
+        Jump();
+        WallSlide();
+        UpdateAnimations();
+
         if(_faceRight == false && _moveInputX > 0)
             Flip();
         else if(_faceRight == true && _moveInputX < 0)
             Flip();
     }
-    void Update() // Update is called once per frame
+
+    private void WallSlide()
+    {
+        if (_isWallTouch && !_isGrounded && _moveInputX != 0)
+            _wallSliding = true;
+        else
+            _wallSliding = false;
+        if (_wallSliding)
+            _rb.velocity = new Vector2(_rb.velocity.x, Mathf.Clamp(_rb.velocity.y, -wallSlideSpeed, float.MaxValue));
+        if (_wallJumping)
+            _rb.velocity = new Vector2(-_moveInputX * wallJumpForce.x, wallJumpForce.y);
+    }
+    private void Jump()
     {
         if (_isGrounded)
             _extraJumps = extraJumpsValue;
+        
         if (Input.GetKeyDown(KeyCode.Space) && _extraJumps > 0)
         {
             _rb.velocity = new Vector2(_rb.velocity.x, jumpForce);
@@ -59,6 +89,19 @@ public class PlayerController : MonoBehaviour
         }
         else if (Input.GetKeyDown(KeyCode.Space) && _isGrounded)
             _rb.velocity = new Vector2(_rb.velocity.x, jumpForce);
+        
+        if (Input.GetKeyDown(KeyCode.Space) && _wallSliding)
+        {
+            _wallJumping = true;
+            _rb.velocity = new Vector2(-_moveInputX * wallJumpForce.x, wallJumpForce.y);
+            Invoke("StopWallJump", wallJumpDuration);
+        }
+    }
+
+    private IEnumerator StopWallJump()
+    {
+        _wallJumping = false;
+        throw new System.NotImplementedException();
     }
     private void Run()
     {
