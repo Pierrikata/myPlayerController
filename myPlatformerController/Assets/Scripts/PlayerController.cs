@@ -11,6 +11,7 @@ public class PlayerController : MonoBehaviour
     private Vector2 _moveInput;
     private bool _isMoving;
     private bool _faceRight = true;
+    private bool _canFlip;
     [SerializeField] private int facingDirection = 1;
 
     [Header("Acceleration")]
@@ -47,7 +48,13 @@ public class PlayerController : MonoBehaviour
     private bool _wallJumping;
     private int _lastWallJumpDirection;
 
-    private const bool CanClimbLedge = false;
+    [Header("LedgeClimb")]
+    [SerializeField] Transform ledgeCheck;
+    private bool _canClimbLedge = false;
+    private bool _ledgeDetected;
+    private bool _isTouchingLedge;
+    private Vector2 _ledgePosBot, _ledgePos1, _ledgePos2;
+    public float ledgeClimbXOffset1, ledgeClimbXOffset2, ledgeClimbYOffset1, ledgeClimbYOffset2;
 
     [Header("Other")]
     private Animator _anim;
@@ -67,7 +74,7 @@ public class PlayerController : MonoBehaviour
     private void FixedUpdate()
     {
         Inputs();
-        CheckWorld();
+        CheckSurroundings();
         Run();
         //WallSlide();
         //WallJump();
@@ -91,12 +98,21 @@ public class PlayerController : MonoBehaviour
         _moveInput.y = Input.GetAxisRaw("Vertical");
 
         if (Input.GetKeyDown(KeyCode.Space))
+        {
             _canJump = true;
+        }
     }
-    void CheckWorld()
+    void CheckSurroundings()
     {
         _isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, whatIsGround);
         _isWallTouch = Physics2D.OverlapCircle(wallCheck.position, wallCheckRadius, whatIsGround);
+        //SOMETHING WRONG HERE: _isTouchingLedge = Physics2D.Raycast(ledgeCheck.position, transform.right, wallCheckRadius * 2, whatIsGround);
+        
+        if (_isWallTouch && !_isTouchingLedge && !_ledgeDetected)
+        {
+            _ledgeDetected = true;
+            _ledgePosBot = wallCheck.position;
+        }
     }
     private void Run()
     {
@@ -149,25 +165,22 @@ public class PlayerController : MonoBehaviour
 		 * Time.fixedDeltaTime is by default in Unity 0.02 seconds equal to 50 FixedUpdate() calls per second
 		*/
         
-        if(!_faceRight && _moveInput.x > 0)
+        if((!_faceRight && _moveInput.x > 0) || (_faceRight && _moveInput.x < 0))
+        {
+            _canFlip = true;
             Flip();
-        else if(_faceRight && _moveInput.x < 0)
-            Flip();
+        }
     }
     private void Flip()
     {
-        /*if (!_wallSliding)
+        if (_canFlip)
         {
-            wallJumpDirection *= -1;
             _faceRight = !_faceRight;
-            transform.Rotate(0, 180, 0);
-        }*/
-        
-        _faceRight = !_faceRight;
-        var transform1 = transform;
-        Vector3 scaler = transform1.localScale; // set Scaler to player's local xyz scale values
-        scaler.x *= -1;
-        transform1.localScale = scaler;
+            var transform1 = transform;
+            Vector3 scaler = transform1.localScale; // set Scaler to player's local xyz scale values
+            scaler.x *= -1;
+            transform1.localScale = scaler;
+        }
     }
     private void Jump()
     {
@@ -193,11 +206,62 @@ public class PlayerController : MonoBehaviour
     }
     private void CheckIfWallSliding()
     {
-        if(_isWallTouch && _rb.velocity.y < 0 && !CanClimbLedge)
+        if(_isWallTouch && _rb.velocity.y < 0 && !_canClimbLedge)
             _wallSliding = true;
         else
             _wallSliding = false;
     }
+    private void CheckLedgeClimb()
+    {
+        if (_ledgeDetected && !_canClimbLedge)
+        {
+            _canClimbLedge = true;
+
+            if (_faceRight)
+            {
+                _ledgePos1 = new Vector2(Mathf.Floor(_ledgePosBot.x + wallCheckRadius * 2) - ledgeClimbXOffset1,
+                    Mathf.Floor(_ledgePosBot.y) + ledgeClimbYOffset1);
+                _ledgePos2 = new Vector2(Mathf.Floor(_ledgePosBot.x + wallCheckRadius * 2) + ledgeClimbXOffset2,
+                    Mathf.Floor(_ledgePosBot.y) + ledgeClimbYOffset2);
+            }
+            else
+            {
+                _ledgePos1 = new Vector2(Mathf.Ceil(_ledgePosBot.x - wallCheckRadius * 2) + ledgeClimbXOffset1,
+                    Mathf.Floor(_ledgePosBot.y) + ledgeClimbYOffset1);
+                _ledgePos2 = new Vector2(Mathf.Ceil(_ledgePosBot.x - wallCheckRadius * 2) - ledgeClimbXOffset2,
+                    Mathf.Floor(_ledgePosBot.y) + ledgeClimbYOffset2);
+            }
+
+            _isMoving = false;
+            _canFlip = false;
+
+            //_anim.SetBool("canClimbLedge", _canClimbLedge);
+        }
+        if (_canClimbLedge)
+            transform.position = _ledgePos1;
+    }
+    public void FinishLedgeClimb()
+    {
+        _canClimbLedge = false;
+        transform.position = _ledgePos2;
+        _isMoving = true;
+        _canFlip = true;
+        _ledgeDetected = false;
+        //_anim.SetBool("canClimbLedge", _canClimbLedge);
+    }
+    private void CheckIfCanJump()
+    {
+        if (_isGrounded && _rb.velocity.y <= 0.01f)
+            _extraJumps = extraJumpsValue;
+        if(_isWallTouch)
+            _wallJumping = true;
+
+        if (_extraJumps <= 0)
+            _canJump = false;
+        else
+            _canJump = true;
+    }
+    
     private void WallJump()
     {
         if (_wallSliding && Input.GetKeyDown(KeyCode.Space))
@@ -216,15 +280,19 @@ public class PlayerController : MonoBehaviour
         // run
         _anim.SetBool("isRunning", _isMoving);
         _anim.SetFloat("xVelocity", Mathf.Abs(_rb.velocity.x)); // SPRINT
+        _anim.SetFloat("Idle X", Mathf.Abs(_rb.velocity.x));
         
         // jump/fall
         _anim.SetBool("isGrounded", _isGrounded);
         _anim.SetFloat("yVelocity", _rb.velocity.y);
         
         // wall
-        _anim.SetBool("wallLanding", _isWallTouch);
+        _anim.SetBool("touchingWall", _isWallTouch);
         _anim.SetBool("wallSliding",_wallSliding);
         _anim.SetBool("wallJump",_wallJumping);
+        
+        // ledge
+        _anim.SetBool("canClimbLedge", _canClimbLedge);
     }
 
     private void OnDrawGizmosSelected()
