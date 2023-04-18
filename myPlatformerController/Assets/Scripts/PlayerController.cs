@@ -11,9 +11,13 @@ public class PlayerController : MonoBehaviour
     private Vector2 _moveInput;
     private bool _isMoving;
     private bool _faceRight = true;
+    [SerializeField] private int facingDirection = 1;
 
     [Header("Acceleration")]
-    [SerializeField] float runAcceleration = 3, runDeceleration = 4,accInAir = .15f, decInAir = .15f;
+    [SerializeField] float runAcceleration = 3;
+    [SerializeField] float runDeceleration = 4;
+    [SerializeField] float accInAir = .15f;
+    [SerializeField] float decInAir = .15f;
 
     [Header("Jump")]
     [SerializeField] int extraJumpsValue = 1;
@@ -24,6 +28,8 @@ public class PlayerController : MonoBehaviour
     private int _extraJumps;
     private bool _isGrounded;
     private bool _canJump;
+    private float _jumpTimer;
+    private float _turnTimer;
 
     [Header("WallSlide")]
     [SerializeField] float wallSlideSpeed = 1;
@@ -39,6 +45,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] float wallJumpDirection = -1;
     [SerializeField] Vector2 wallJumpForce;
     private bool _wallJumping;
+    private int _lastWallJumpDirection;
+
+    private const bool CanClimbLedge = false;
 
     [Header("Other")]
     private Animator _anim;
@@ -60,18 +69,10 @@ public class PlayerController : MonoBehaviour
         Inputs();
         CheckWorld();
         Run();
-        // WallSlide();
-        // WallJump();
+        //WallSlide();
+        //WallJump();
 
-        if (Input.GetKeyDown("space") && _isWallTouch && !_isGrounded)
-        {
-            _wallJumping = true;
-            Invoke("StopWallJump", .08f);
-        }
-        if (_wallJumping && _faceRight)
-            _rb.velocity = new Vector2(-wallJumpForce.x, wallJumpForce.y);
-        else if (_wallJumping && !_faceRight)
-            _rb.velocity = new Vector2(wallJumpForce.x, wallJumpForce.y);
+        /**/
     }
     private void Update() // Update is called once per frame ... NOTE: I set to private
     {
@@ -79,6 +80,8 @@ public class PlayerController : MonoBehaviour
         
         Jump();
         //WallSlide();
+        WallSlide();
+        WallJump();
         UpdateAnimations();
     }
 
@@ -166,19 +169,6 @@ public class PlayerController : MonoBehaviour
         scaler.x *= -1;
         transform1.localScale = scaler;
     }
-    private void WallSlide()
-    {
-        if (_isWallTouch && !_isGrounded)
-            _wallSliding = true;
-        else
-            _wallSliding = false;
-        if (_wallSliding) {
-            if(Input.GetAxisRaw("Horizontal") != 0)
-                _rb.velocity = new Vector2(_rb.velocity.x, -.000001f);
-            else if (_rb.velocity.y < -wallSlideSpeed)
-                _rb.velocity = new Vector2(_rb.velocity.x, -wallSlideSpeed);
-        }
-    }
     private void Jump()
     {
         if (_isGrounded || _isWallTouch)
@@ -192,24 +182,29 @@ public class PlayerController : MonoBehaviour
         else if (Input.GetKeyDown(KeyCode.Space) && _isGrounded)
             _rb.velocity = new Vector2(_rb.velocity.x, jumpForce);
     }
-    private void WallJump() {
-        if (_wallJumping)
-        {
-            _rb.velocity = new Vector2 (_rb.velocity.x, 0.0f);
+    private void WallSlide()
+    {
+        if (_isWallTouch && !_isGrounded && _rb.velocity.y < 0)
+            _wallSliding = true;
+        else
             _wallSliding = false;
-            _extraJumps = extraJumpsValue;
-            _extraJumps--;
-            _rb.AddForce(new Vector2(wallJumpForce.x * _moveInput.x, wallJumpForce.y), ForceMode2D.Impulse);
-            // _wallJumpTimer = 0;
-            // isAttemptingToJump=false;
-            // checkJumpMultiplier = true;
-            // turnTimer = 0;
-            // canMove = true;
-            // canFlip = true;
-            // hasWallJumped = true;
-            _wallJumpTimer = wallJumpTimerSet;
-            //lastWallJumpDirection = -facingDirection;
-        }
+        if (_wallSliding)
+            _rb.velocity = new Vector2(_rb.velocity.x, -wallSlideSpeed);
+    }
+    private void CheckIfWallSliding()
+    {
+        if(_isWallTouch && _rb.velocity.y < 0 && !CanClimbLedge)
+            _wallSliding = true;
+        else
+            _wallSliding = false;
+    }
+    private void WallJump()
+    {
+        if (_wallSliding && Input.GetKeyDown(KeyCode.Space))
+        {
+            _rb.AddForce(new Vector2(wallJumpForce.x * wallJumpDirection, wallJumpForce.y),ForceMode2D.Impulse);
+            Flip();
+        } 
     }
     private void StopWallJump()
     {
