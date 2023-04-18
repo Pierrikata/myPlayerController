@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -5,35 +6,43 @@ using UnityEngine.Serialization;
 
 public class PlayerController : MonoBehaviour
 {
-    [FormerlySerializedAs("speed")] public float maxRunSpeed;
-    public float jumpForce;
-    private float _moveInputX;
-
-    public float runAcceleration, runDeceleration,accInAir, decInAir;
-
-    private Rigidbody2D _rb;
-
+    [Header("Movement")]
+    [SerializeField] float maxRunSpeed = 30;
+    private Vector2 _moveInput;
+    private bool _isMoving;
     private bool _faceRight = true;
 
-    private bool _isGrounded;
-    public Transform groundCheck;
-    public float checkRadius;
-    public LayerMask whatIsGround; // determines what layer the player interacts with
+    [Header("Acceleration")]
+    [SerializeField] float runAcceleration = 3, runDeceleration = 4,accInAir = .15f, decInAir = .15f;
 
-    [Header("Wall Jump System")]
-    public Transform wallCheck;
+    [Header("Jump")]
+    [SerializeField] int extraJumpsValue = 1;
+    [SerializeField] float jumpForce = 12;
+    [SerializeField] float groundCheckRadius = .25f;
+    [SerializeField] Transform groundCheck;
+    [SerializeField] LayerMask whatIsGround; // determines what layer the player interacts with
+    private int _extraJumps;
+    private bool _isGrounded;
+    private bool _canJump;
+
+    [Header("WallSlide")]
+    [SerializeField] float wallSlideSpeed = 1;
+    [SerializeField] float wallCheckRadius = .5f;
+    [SerializeField] Transform wallCheck;
     private bool _isWallTouch;
     private bool _wallSliding;
-    public float wallSlideSpeed;
     
-    public float wallJumpDuration;
-    public Vector2 wallJumpForce;
+    [Header("WallJump")]
+    private float _touchingWallValue;
+    private float _wallJumpTimer;
+    [SerializeField] float wallJumpTimerSet;
+    [SerializeField] float wallJumpDirection = -1;
+    [SerializeField] Vector2 wallJumpForce;
     private bool _wallJumping;
 
-    private int _extraJumps;
-    public int extraJumpsValue;
-
+    [Header("Other")]
     private Animator _anim;
+    private Rigidbody2D _rb;
     
     // set rigidbody and animator in very first frame of program
     void Start()
@@ -42,71 +51,60 @@ public class PlayerController : MonoBehaviour
 
         _anim = GetComponent<Animator>(); // to manipulate our player's animator
         _rb = GetComponent<Rigidbody2D>(); // can tweak and use our player's rigidbody
+        wallJumpForce.Normalize(); // ???
     }
 
     // Called once per frame, is used to manage all physics-related aspects of your game
     private void FixedUpdate()
     {
-        _isGrounded = Physics2D.OverlapCircle(groundCheck.position, checkRadius, whatIsGround);
-        _isWallTouch = Physics2D.OverlapCircle(wallCheck.position, checkRadius, whatIsGround);
-        _moveInputX = Input.GetAxisRaw("Horizontal"); // built-in Unity input field (e.g. holding right arrow key -> moveInput = 1)
-        
+        Inputs();
+        CheckWorld();
         Run();
-        //WallSlide();
-    }
-    void Update() // Update is called once per frame
-    {
-        Jump();
-        WallSlide();
-        UpdateAnimations();
+        // WallSlide();
+        // WallJump();
 
-        if(_faceRight == false && _moveInputX > 0)
-            Flip();
-        else if(_faceRight == true && _moveInputX < 0)
-            Flip();
-    }
-
-    private void WallSlide()
-    {
-        if (_isWallTouch && !_isGrounded && _moveInputX != 0)
-            _wallSliding = true;
-        else
-            _wallSliding = false;
-        if (_wallSliding)
-            _rb.velocity = new Vector2(_rb.velocity.x, Mathf.Clamp(_rb.velocity.y, -wallSlideSpeed, float.MaxValue));
-        if (_wallJumping)
-            _rb.velocity = new Vector2(-_moveInputX * wallJumpForce.x, wallJumpForce.y);
-    }
-    private void Jump()
-    {
-        if (_isGrounded)
-            _extraJumps = extraJumpsValue;
-        
-        if (Input.GetKeyDown(KeyCode.Space) && _extraJumps > 0)
-        {
-            _rb.velocity = new Vector2(_rb.velocity.x, jumpForce);
-            _extraJumps--;
-        }
-        else if (Input.GetKeyDown(KeyCode.Space) && _isGrounded)
-            _rb.velocity = new Vector2(_rb.velocity.x, jumpForce);
-        
-        if (Input.GetKeyDown(KeyCode.Space) && _wallSliding)
+        if (Input.GetKeyDown("space") && _isWallTouch && !_isGrounded)
         {
             _wallJumping = true;
-            _rb.velocity = new Vector2(-_moveInputX * wallJumpForce.x, wallJumpForce.y);
-            Invoke("StopWallJump", wallJumpDuration);
+            Invoke("StopWallJump", .08f);
         }
+        if (_wallJumping && _faceRight)
+            _rb.velocity = new Vector2(-wallJumpForce.x, wallJumpForce.y);
+        else if (_wallJumping && !_faceRight)
+            _rb.velocity = new Vector2(wallJumpForce.x, wallJumpForce.y);
+    }
+    private void Update() // Update is called once per frame ... NOTE: I set to private
+    {
+        // Inputs();
+        
+        Jump();
+        //WallSlide();
+        UpdateAnimations();
     }
 
-    private IEnumerator StopWallJump()
+    void Inputs()
     {
-        _wallJumping = false;
-        throw new System.NotImplementedException();
+        _moveInput.x = Input.GetAxisRaw("Horizontal"); // built-in Unity input field (e.g. holding right arrow key -> moveInput = 1)
+        _moveInput.y = Input.GetAxisRaw("Vertical");
+
+        if (Input.GetKeyDown(KeyCode.Space))
+            _canJump = true;
+    }
+    void CheckWorld()
+    {
+        _isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, whatIsGround);
+        _isWallTouch = Physics2D.OverlapCircle(wallCheck.position, wallCheckRadius, whatIsGround);
     }
     private void Run()
     {
+        // for UpdateAnimations()
+        if (_moveInput.x != 0 && _rb.velocity.x != 0)
+            _isMoving = true;
+        else
+            _isMoving = false;
+        
         // calculate the direction we want to move in and our desired velocity
-        float targetSpeed = _moveInputX * maxRunSpeed;
+        float targetSpeed = _moveInput.x * maxRunSpeed;
         // calculate difference b/w current velocity and desired velocity
         float speedDif = targetSpeed - _rb.velocity.x;
         // change acceleration rate depending on situation
@@ -147,27 +145,97 @@ public class PlayerController : MonoBehaviour
 		 * RB.velocity = new Vector2(RB.velocity.x + (Time.fixedDeltaTime  * speedDif * accelRate) / RB.mass, RB.velocity.y);
 		 * Time.fixedDeltaTime is by default in Unity 0.02 seconds equal to 50 FixedUpdate() calls per second
 		*/
+        
+        if(!_faceRight && _moveInput.x > 0)
+            Flip();
+        else if(_faceRight && _moveInput.x < 0)
+            Flip();
     }
     private void Flip()
     {
+        /*if (!_wallSliding)
+        {
+            wallJumpDirection *= -1;
+            _faceRight = !_faceRight;
+            transform.Rotate(0, 180, 0);
+        }*/
+        
         _faceRight = !_faceRight;
         var transform1 = transform;
         Vector3 scaler = transform1.localScale; // set Scaler to player's local xyz scale values
         scaler.x *= -1;
         transform1.localScale = scaler;
     }
+    private void WallSlide()
+    {
+        if (_isWallTouch && !_isGrounded)
+            _wallSliding = true;
+        else
+            _wallSliding = false;
+        if (_wallSliding) {
+            if(Input.GetAxisRaw("Horizontal") != 0)
+                _rb.velocity = new Vector2(_rb.velocity.x, -.000001f);
+            else if (_rb.velocity.y < -wallSlideSpeed)
+                _rb.velocity = new Vector2(_rb.velocity.x, -wallSlideSpeed);
+        }
+    }
+    private void Jump()
+    {
+        if (_isGrounded || _isWallTouch)
+            _extraJumps = extraJumpsValue;
 
+        if (Input.GetKeyDown(KeyCode.Space) && _extraJumps > 0)
+        {
+            _rb.velocity = new Vector2(_rb.velocity.x, jumpForce);
+            _extraJumps--;
+        }
+        else if (Input.GetKeyDown(KeyCode.Space) && _isGrounded)
+            _rb.velocity = new Vector2(_rb.velocity.x, jumpForce);
+    }
+    private void WallJump() {
+        if (_wallJumping)
+        {
+            _rb.velocity = new Vector2 (_rb.velocity.x, 0.0f);
+            _wallSliding = false;
+            _extraJumps = extraJumpsValue;
+            _extraJumps--;
+            _rb.AddForce(new Vector2(wallJumpForce.x * _moveInput.x, wallJumpForce.y), ForceMode2D.Impulse);
+            // _wallJumpTimer = 0;
+            // isAttemptingToJump=false;
+            // checkJumpMultiplier = true;
+            // turnTimer = 0;
+            // canMove = true;
+            // canFlip = true;
+            // hasWallJumped = true;
+            _wallJumpTimer = wallJumpTimerSet;
+            //lastWallJumpDirection = -facingDirection;
+        }
+    }
+    private void StopWallJump()
+    {
+        _wallJumping = false;
+        throw new System.NotImplementedException();
+    }
     private void UpdateAnimations()
     {
-        // directional input triggers running animation
-        if(_moveInputX == 0)
-            _anim.SetBool("isRunning", false);
-        else
-            _anim.SetBool("isRunning", true);
-        _anim.SetFloat("xVelocity", Mathf.Abs(_rb.velocity.x));
+        // run
+        _anim.SetBool("isRunning", _isMoving);
+        _anim.SetFloat("xVelocity", Mathf.Abs(_rb.velocity.x)); // SPRINT
         
-        // not being grounded triggers a jump/fall animation
+        // jump/fall
         _anim.SetBool("isGrounded", _isGrounded);
         _anim.SetFloat("yVelocity", _rb.velocity.y);
+        
+        // wall
+        _anim.SetBool("wallLanding", _isWallTouch);
+        _anim.SetBool("wallSliding",_wallSliding);
+        _anim.SetBool("wallJump",_wallJumping);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
+        Gizmos.DrawWireSphere(wallCheck.position, wallCheckRadius);
+        throw new NotImplementedException();
     }
 }
