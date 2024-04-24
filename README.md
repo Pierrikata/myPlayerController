@@ -1,6 +1,6 @@
 # myPlayerController
 A recreation of a 2D platformer controller that references Heinrich's tutorials on his YouTube channel, Bardent. It features variable jumping and running acceleration to enhance the player's movement experience.
-## Links
+## Links to Reference
 - [Bardent Studio Website](https://bardentstudios.com)
 - [Bardent Discord](https://discord.gg/uHQrf7K)
 - [Bardent Github](https://github.com/Bardent)
